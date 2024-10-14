@@ -4,12 +4,10 @@ from pyvis.network import Network
 import streamlit.components.v1 as components
 import plotly.express as px
 
-
 @st.cache_data
-def load_data(file):
+def load_data(file_path):
     """Loads the CSV file into a DataFrame."""
-    return pd.read_csv(file)
-
+    return pd.read_csv(file_path)
 
 def calculate_network_strength(df, total_members=2000):
     """Calculates the network strength as the percentage of unique connected members."""
@@ -18,14 +16,12 @@ def calculate_network_strength(df, total_members=2000):
     network_strength = (unique_count / total_members) * 100
     return unique_count, network_strength
 
-
 def calculate_member_statistics(df):
     """Calculates statistics for each member."""
     member_stats = df.groupby('Member')['NetworkConnections'].apply(
         lambda x: ', '.join(x) if x.size > 0 else '').reset_index()
     member_stats['ConnectionCount'] = member_stats['NetworkConnections'].str.split(', ').apply(len)
     return member_stats
-
 
 def calculate_team_statistics(df):
     """Calculates interaction counts for each team and their statistics."""
@@ -39,7 +35,6 @@ def calculate_team_statistics(df):
     team_stats = exploded_counts['Network_Connections_Teams'].value_counts().reset_index()
     team_stats.columns = ['Team', 'Count']
     return team_stats
-
 
 def create_bubble_chart(team_stats):
     """Creates a bubble chart for team statistics."""
@@ -74,7 +69,6 @@ def create_bubble_chart(team_stats):
 
     return stats_df  # Return the stats DataFrame for further processing
 
-
 def create_stacked_bar_chart(selected_category, team_stats):
     """Creates a stacked bar chart for team statistics based on the selected category."""
     if selected_category == "Above Average":
@@ -96,7 +90,6 @@ def create_stacked_bar_chart(selected_category, team_stats):
                  text=None)  # Remove text from the bar chart
 
     st.plotly_chart(fig)
-
 
 def display_filters(df):
     """Displays the network filters and applies the selected filter."""
@@ -130,7 +123,6 @@ def display_filters(df):
         return filter_option,filtered_df
 
     return df  # Return the original dataframe if no filter is applied
-
 
 def visualize_network(filtered_df):
     """Creates and displays the network graph using the filtered data."""
@@ -176,78 +168,71 @@ def visualize_network(filtered_df):
     source_code = HtmlFile.read()
     components.html(source_code, height=900, width=1100, scrolling=True)
 
-
-
-
-
 def main():
     """Main function to run the Streamlit app."""
     st.title("PL Network Visualization")
-    st.sidebar.title("Upload Network Data")
-    uploaded_file = st.sidebar.file_uploader("Choose a CSV file", type="csv")
+    st.sidebar.title("Select Connectivity Type")
 
-    if uploaded_file is not None:
-        df = load_data(uploaded_file)
-        df['ConnectionCount'] = df['NetworkConnections'].apply(lambda x: len(x.split(',')))
+    # Dropdown to select between "LongTerm Connectivity" and "Conversation Based Connectivity"
+    connectivity_option = st.sidebar.selectbox(
+        "Choose Connectivity Type:",
+        options=["LongTerm Connectivity", "Conversation Based Connectivity"]
+    )
 
-        # Calculate unique members and network strength
-        unique_count, network_strength = calculate_network_strength(df)
+    # Select the appropriate CSV file based on the option
+    if connectivity_option == "LongTerm Connectivity":
+        file_path = "./followersfollowing.csv"
+    else:
+        file_path = "./Connections_TwitInteractions.csv"
 
-        # Display network strength
-        st.metric(label="Member Network Strength", value=f"{network_strength:.2f}%")
-        st.progress(network_strength / 100)
+    # Load the selected CSV file
+    df = load_data(file_path)
+    df['ConnectionCount'] = df['NetworkConnections'].apply(lambda x: len(x.split(',')))
 
-        # Team Strength Indicator
-        total_teams = 600  # Assuming total teams is 600
-        unique_teams_count = df['Member_Teams'].nunique()  # Calculate unique teams for strength
-        team_strength_percentage = (unique_teams_count / total_teams) * 100
-        st.metric(label="Team Network Strength", value=f"{team_strength_percentage:.2f}%")
-        st.progress(team_strength_percentage/100)
+    # Calculate unique members and network strength
+    unique_count, network_strength = calculate_network_strength(df)
 
-        # Dropdown for Members or Teams
-        selection_type = st.selectbox("Select:", options=["Member", "Team"])
+    # Display network strength
+    st.metric(label="Member Network Strength", value=f"{network_strength:.2f}%")
+    st.progress(network_strength / 100)
 
-        if selection_type == "Member":
-            # Dropdown for members
-            unique_members = df['Member'].unique()
-            selected_member = st.selectbox("Select a member:", options=['All'] + list(unique_members))
+    # Team Strength Indicator
+    total_teams = 600  # Assuming total teams is 600
+    unique_teams_count = df['Member_Teams'].nunique()  # Calculate unique teams for strength
+    team_strength_percentage = (unique_teams_count / total_teams) * 100
+    st.metric(label="Team Network Strength", value=f"{team_strength_percentage:.2f}%")
+    st.progress(team_strength_percentage / 100)
 
+    # Dropdown for Members or Teams
+    selection_type = st.selectbox("Select:", options=["Member", "Team"])
 
-            if selected_member != 'All':
-                filtered_df = df[(df['Member'] == selected_member) | (df['NetworkConnections'] == selected_member)]
+    if selection_type == "Member":
+        # Dropdown for members
+        unique_members = df['Member'].unique()
+        selected_member = st.selectbox("Select a member:", options=['All'] + list(unique_members))
+
+        if selected_member != 'All':
+            filtered_df = df[(df['Member'] == selected_member) | (df['NetworkConnections'] == selected_member)]
+            visualize_network(filtered_df)
+        else:
+            option, filtered_df = display_filters(df)
+            if not filtered_df.empty:
+                st.dataframe(filtered_df, height=300)  # Display DataFrame with a scrollable view
+                csv_data = filtered_df.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label=f"Download Network Connectivity Data as CSV",
+                    data=csv_data,
+                    file_name=f"{option}_network_connectivity_data.csv",
+                    mime='text/csv'
+                )
                 visualize_network(filtered_df)
-            else:
-                option,filtered_df = display_filters(df)
-                if not filtered_df.empty:
-                    st.dataframe(filtered_df, height=300)  # Display DataFrame with a scrollable view
-                    csv_data = filtered_df.to_csv(index=False).encode('utf-8')
-                    filename=option+"_network_data.csv"
-                    st.download_button(label="Download Filtered Data", data=csv_data,
-                                       file_name=filename, mime='text/csv')
-                    visualize_network(filtered_df)
-                else:
-                    st.warning("No connections found with the selected filters.")
 
-
-        else:  # Team selected
-            # Dropdown for teams
-            unique_teams = df['Member_Teams'].unique()
-            selected_team = st.selectbox("Select a team:", options=['All'] + list(unique_teams))
-
-            # Calculate team statistics and create the bubble chart
-            team_stats = calculate_team_statistics(df)
-            if selected_team != 'All':
-                team_stats = team_stats[team_stats['Team'] == selected_team]
-
-            # Create bubble chart for team statistics
-            stats_df = create_bubble_chart(team_stats)
-
-            # Dropdown for stats options
-            selected_category = st.selectbox("Select stats category:",
-                                             options=["None", "Above Average", "Below Average", "Maximum", "Minimum"])
-            if selected_category != "None":
-                create_stacked_bar_chart(selected_category, team_stats)
-
+    elif selection_type == "Team":
+        # Show team interactions
+        team_stats = calculate_team_statistics(df)
+        bubble_stats = create_bubble_chart(team_stats)
+        selected_category = st.selectbox("Select a category to view teams:", bubble_stats['Category'].unique())
+        create_stacked_bar_chart(selected_category, team_stats)
 
 if __name__ == "__main__":
     main()
